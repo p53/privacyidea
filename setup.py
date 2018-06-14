@@ -5,7 +5,7 @@ import stat
 import sys
 
 #VERSION="2.1dev4"
-VERSION="2.22-pannet-3"
+VERSION="2.22-pannet-4"
 
 # Taken from kennethreitz/requests/setup.py
 package_directory = os.path.realpath(os.path.dirname(__file__))
@@ -51,10 +51,10 @@ install_requires = ["Flask>=0.10.1",
                     "docutils>=0.12",
                     "funcparserlib>=0.3.6",
                     "itsdangerous>=0.24",
-                    "ldap3==2.1.1",
+                    "ldap3==2.5",
                     "netaddr>=0.7.12",
                     "passlib>=1.6.2",
-                    "pyasn1>=0.1.7",
+                    "pyasn1==0.4.3",
                     "pyOpenSSL>=0.15.1",
                     "pycparser>=2.10",
                     "pycrypto>=2.6.1",
