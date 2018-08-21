@@ -32,28 +32,6 @@ from privacyidea.lib import _
 import logging
 log = logging.getLogger(__name__)
 
-class ERROR:
-    SUBSCRIPTION = 101
-    TOKENADMIN = 301
-    CONFIGADMIN = 302
-    POLICY = 303
-    VALIDATE = 401
-    REGISTRATION = 402
-    AUTHENTICATE = 403
-    AUTHENTICATE_WRONG_CREDENTIALS = 4031
-    AUTHENTICATE_MISSING_USERNAME = 4032
-    AUTHENTICATE_AUTH_HEADER = 4033
-    AUTHENTICATE_DECODING_ERROR = 4304
-    AUTHENTICATE_TOKEN_EXPIRED = 4305
-    AUTHENTICATE_MISSING_RIGHT = 4306
-    CA = 503
-    SMSFAILURE = 504
-    HSM = 707
-    SELFSERVICE = 807
-    SERVER = 903
-    USER = 904
-    PARAMETER = 905
-
 class privacyIDEAError(Exception):
 
     def __init__(self, description=u"privacyIDEAError!", id=10):
