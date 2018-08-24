@@ -32,7 +32,6 @@ from privacyidea.lib import _
 import logging
 log = logging.getLogger(__name__)
 
-
 class privacyIDEAError(Exception):
 
     def __init__(self, description=u"privacyIDEAError!", id=10):
