@@ -303,6 +303,7 @@ class ACTION(object):
     TIMEOUT_ACTION = "timeout_action"
     AUTH_CACHE = "auth_cache"
     HIDE_WELCOME = "hide_welcome_info"
+    SHOW_SEED = "show_seed"
     CUSTOM_MENU = "custom_menu"
     CUSTOM_BASELINE = "custom_baseline"
 
