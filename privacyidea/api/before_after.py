@@ -231,7 +231,13 @@ def after_request(response):
 @postrequest(sign_response, request=request)
 def auth_error(error):
     if "audit_object" in g:
-        g.audit_object.log({"info": error.description})
+        message = error.description
+
+        if hasattr(error, 'details'):
+            if 'message' in error.details:
+                message = "{}|{}".format(error.description, error.details['message'])
+
+        g.audit_object.log({"info": message})
         g.audit_object.finalize_log()
     return send_error(error.description,
                       error_code=-401,
