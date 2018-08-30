@@ -1269,11 +1269,10 @@ class TokenClass(object):
         to complete the token initialization, the response of the initialisation
         should be build by this token specific method.
         This method is called from api/token after the token is enrolled
-
         get_init_detail returns additional information after an admin/init
         like the QR code of an HOTP/TOTP token.
         Can be anything else.
-
+        
         :param params: The request params during token creation token/init
         :type params: dict
         :param user: the user, token owner
@@ -1292,16 +1291,12 @@ class TokenClass(object):
             otpkey = init_details.get('otpkey')
 
         if otpkey is not None:
-            key_bin = binascii.unhexlify(otpkey)
-            # also strip the padding =, as it will get problems with the google app.
-            otpkey_human = base64.b32encode(key_bin).strip('=')
             response_detail["otpkey"] = {"description": "OTP seed",
                                          "value": "seed://{0!s}".format(otpkey),
-                                         "human_value": "key://{0!s}".format(otpkey_human),
                                          "img": create_img(otpkey, width=200)}
 
         return response_detail
-
+        
     def get_QRimage_data(self, response_detail):
         """
         FIXME: Do we really use this?
