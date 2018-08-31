@@ -248,7 +248,7 @@ def get_resolver_types():
         (_r_classes, r_types) = get_resolver_class_dict()
         resolver_types = r_types.values()
         current_app.config["pi_resolver_types"] = resolver_types
-    
+
     return resolver_types
 
 
@@ -277,7 +277,7 @@ def get_resolver_classes():
         (r_classes, _r_types) = get_resolver_class_dict()
         resolver_classes = r_classes.values()
         current_app.config["pi_resolver_classes"] = resolver_classes
-    
+
     return resolver_classes
 
 
@@ -481,7 +481,7 @@ def get_resolver_class_dict():
     """
     get a dictionary of the resolver classes and a dictionary
     of the resolver types:
-    
+
     ({'privacyidea.lib.resolvers.PasswdIdResolver.IdResolver':
       <class 'privacyidea.lib.resolvers.PasswdIdResolver.IdResolver'>,
       'privacyidea.lib.resolvers.PasswdIdResolver.UserIdResolver':
@@ -541,6 +541,7 @@ def get_resolver_list():
     module_list.add("privacyidea.lib.resolvers.LDAPIdResolver")
     module_list.add("privacyidea.lib.resolvers.SCIMIdResolver")
     module_list.add("privacyidea.lib.resolvers.SQLIdResolver")
+    module_list.add("privacyidea.lib.resolvers.CassandradResolver")
 
     # Dynamic Resolver modules
     # TODO: Migration
@@ -614,7 +615,7 @@ def get_token_list():
 
     #module_list.add(".tokens.tagespassworttoken")
     #module_list.add(".tokens.vascotoken")
-    
+
     # Dynamic Resolver modules
     # TODO: Migration
     # config_modules = config.get("privacyideaResolverModules", '')
