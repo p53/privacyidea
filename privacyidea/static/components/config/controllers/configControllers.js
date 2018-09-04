@@ -1055,3 +1055,52 @@ myApp.controller("SqlResolverController", function ($scope, ConfigFactory,
         });
     };
 });
+
+myApp.controller("CassandraResolverController", function ($scope, ConfigFactory,
+                                                    $state, $stateParams,
+                                                    inform, gettextCatalog) {
+    /*
+
+     */
+    $scope.params = {
+        type: 'cassandraresolver'
+    };
+    $scope.result = {};
+    $scope.resolvername = $stateParams.resolvername;
+    $scope.hashtypes = Array("PHPASS", "SHA", "SSHA","SSHA256", "SSHA512", "OTRS");
+
+    $('html,body').scrollTop(0);
+
+    if ($scope.resolvername) {
+        /* If we have a resolvername, we do an Edit
+         and we need to fill all the $scope.params */
+        ConfigFactory.getResolver($scope.resolvername, function (data) {
+            var resolver = data.result.value[$scope.resolvername];
+            //debug: console.log(resolver);
+            $scope.params = resolver.data;
+            $scope.params.type = 'cassandraresolver';
+            $scope.params.Editable = isTrue($scope.params.Editable);
+        });
+    }
+
+    $scope.setCassandraResolver = function () {
+        ConfigFactory.setResolver($scope.resolvername, $scope.params, function (data) {
+            $scope.set_result = data.result.value;
+            $scope.getResolvers();
+            $state.go("config.resolvers.list");
+        });
+    };
+
+    $scope.testCassandra = function () {
+        ConfigFactory.testResolver($scope.params, function (data) {
+            //debug: console.log(data.result);
+            if (data.result.value >= 0) {
+                inform.add(data.detail.description,
+                    {type: "success", ttl: 10000});
+            } else {
+                inform.add(data.detail.description,
+                    {type: "danger", ttl: 10000});
+            }
+        });
+    };
+});

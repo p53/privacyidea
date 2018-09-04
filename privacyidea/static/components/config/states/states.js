@@ -79,6 +79,14 @@ angular.module('privacyideaApp.configStates', ['ui.router']).config(
                     url: "/ldap/{resolvername:.*}",
                     templateUrl: configpath + "config.resolvers.sql.html"
                 })
+                .state('config.resolvers.addcassandraresolver', {
+                    url: "/cassandra",
+                    templateUrl: configpath + "config.resolvers.cassandra.html"
+                })
+                .state('config.resolvers.editcassandraresolver', {
+                    url: "/cassandra/{resolvername:.*}",
+                    templateUrl: configpath + "config.resolvers.cassandra.html"
+                })
                 .state('config.caconnectors', {
                     url: "/caconnectors",
                     templateUrl: configpath + "config.caconnectors.html"

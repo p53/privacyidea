@@ -623,6 +623,10 @@ msgstr ""
 msgid "Create a new SQL Resolver"
 msgstr ""
 
+#: privacyidea/static/components/config/views/config.resolvers.cassandra.html:7
+msgid "Create a new Cassandra Resolver"
+msgstr ""
+
 #: privacyidea/static/components/config/views/config.mresolvers.hosts.html:7
 msgid ""
 "Create a new hosts Machine\n"
@@ -887,6 +891,10 @@ msgstr ""
 
 #: privacyidea/static/components/config/views/config.resolvers.sql.html:3
 msgid "Edit SQL Resolver {{ resolvername }}"
+msgstr ""
+
+#: privacyidea/static/components/config/views/config.resolvers.cassandra.html:3
+msgid "Edit Cassandra Resolver {{ resolvername }}"
 msgstr ""
 
 #: privacyidea/static/components/config/views/config.mresolvers.hosts.html:3

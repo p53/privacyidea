@@ -30,6 +30,7 @@ The file is tested in tests/test_lib_resolver.py
 
 import logging
 import yaml
+import random
 
 from UserIdResolver import UserIdResolver
 
@@ -50,6 +51,8 @@ except ImportError:  # pragma: no cover
     log.debug("Cassandra driver could not be loaded!")
 
 from cassandra.auth import PlainTextAuthProvider
+from cassandra import ConsistencyLevel
+from cassandra.query import dict_factory
 
 class IdResolver (UserIdResolver):
 
@@ -63,8 +66,28 @@ class IdResolver (UserIdResolver):
                     }
 
     # If the resolver could be configured editable
-    updateable = False
+    updateable = True
 
+    def __init__(self):
+        self.resolverId = ""
+        self.server = ""
+        self.database = ""
+        self.port = 0
+        self.limit = 100
+        self.user = ""
+        self.password = ""
+        self.table = ""
+        self.map = {}
+        self.reverse_map = {}
+        self.encoding = ""
+        self.conParams = ""
+        self.connect_string = ""
+        self.session = None
+        self.engine = None
+        self._editable = False
+        self.password_hash_type = None
+        return
+        
     @staticmethod
     def setup(config=None, cache_dir=None):
         """
@@ -75,30 +98,6 @@ class IdResolver (UserIdResolver):
         :type  config: the privacyidea config dict
         """
         log.info("Setting up the CassandraResolver")
-
-    def __init__(self):
-        self.resolverId = ""
-        self.server = ""
-        self.driver = ""
-        self.database = ""
-        self.port = 0
-        self.limit = 100
-        self.user = ""
-        self.password = ""
-        self.table = ""
-        self.map = {}
-        self.reverse_map = {}
-        self.where = ""
-        self.encoding = ""
-        self.conParams = ""
-        self.connect_string = ""
-        self.session = None
-        self.pool_size = 10
-        self.pool_timeout = 120
-        self.engine = None
-        self._editable = False
-        self.password_hash_type = None
-        return
 
     def getSearchFields(self):
         return self.searchFields
@@ -118,6 +117,7 @@ class IdResolver (UserIdResolver):
             password = password.encode(self.encoding)
 
         database_pw = userinfo.get("password", "XXXXXXX")
+
         if database_pw[:2] in ["$P", "$S"]:
             # We have a phpass (wordpress) password
             PH = PasswordHash()
@@ -155,20 +155,18 @@ class IdResolver (UserIdResolver):
             conditions = []
             userid_field = self.map.get("userid")
 
-            query_string = "SELECT * FROM {}.{} WHERE {}={}"
-            query = query_string.format(
-                self.database,
-                self.table,
-                userid_field,
+            query_string = "SELECT * FROM {} WHERE {}=%s"
+            query = query_string.format(self.table, userid_field)
+            query_params = [
                 userId
-            )
+            ]
 
-            rows = self.session.exec(query)
+            rows = self.session.execute(query, query_params)
 
             for r in rows:
                 if userinfo.keys():  # pragma: no cover
                     raise Exception("More than one user with userid {0!s} found!".format(userId))
-                userinfo = self._get_user_from_mapped_object(r)
+                userinfo = self._get_user_from_record(r)
         except Exception as exx:  # pragma: no cover
             log.error("Could not get the userinformation: {0!r}".format(exx))
 
@@ -201,36 +199,32 @@ class IdResolver (UserIdResolver):
             conditions = []
             column = self.map.get("username")
 
-            query_string = "SELECT {} FROM {}.{} WHERE {}='{}'"
-            query = query_string.format(
-                userid_field,
-                self.database,
-                self.table,
-                column,
+            query_string = "SELECT {} FROM {} WHERE {} like %s"
+            query = query_string.format(userid_field, self.table, column)
+            query_params = [
                 LoginName
-            )
+            ]
 
-            rows = self.session.exec(query)
+            rows = self.session.execute(query, query_params)
 
             for r in rows:
                 if userid != "":    # pragma: no cover
                     raise Exception("More than one user with loginname"
                                     " %s found!" % LoginName)
-                user = self._get_user_from_mapped_object(r)
+                user = self._get_user_from_record(r)
                 userid = user['id']
         except Exception as exx:    # pragma: no cover
             log.error("Could not get the userinformation: {0!r}".format(exx))
 
         return userid
 
-    def _get_user_from_mapped_object(self, ro):
+    def _get_user_from_record(self, r):
         """
-        :param ro: row
-        :type ro: Mapped Object
+        :param r: row
+        :type r: dict
         :return: User
         :rtype: dict
         """
-        r = ro.__dict__
         user = {}
         try:
             if self.map.get("userid") in r:
@@ -264,28 +258,32 @@ class IdResolver (UserIdResolver):
         """
         users = []
         conditions = []
-
+        filter_condition = ''
+        
         if searchDict is None:
             searchDict = {}
         for key in searchDict.keys():
             column = self.map.get(key)
             value = searchDict.get(key)
             value = value.replace("*", "%")
-            condition = "{} like '{}'".format(column, value)
-            conditions.append(condition)
+            
+            if '%' != value:
+                condition = "{} like %({})s".format(column, column)
+                searchDict[column] = value
+                conditions.append(condition)
 
-        filter_condition = ' and '.join(conditions)
+        if conditions:
+            filter_condition = "WHERE {}".format(' and '.join(conditions))
 
-        query = "SELECT FROM {}.{} WHERE {} LIMIT {}"
-        query_string = query.format(filter_condition, self.limit)
+        query_string = "SELECT * FROM {} {} LIMIT {}"
+        query = query_string.format(self.table, filter_condition, self.limit)
 
-        rows = self.session.exec(query)
-
+        rows = self.session.execute(query, searchDict)
         for r in rows:
-            user = self._get_user_from_mapped_object(r)
+            user = self._get_user_from_record(r)
             if "id" in user:
                 users.append(user)
-
+            
         return users
 
     def getResolverId(self):
@@ -325,7 +323,6 @@ class IdResolver (UserIdResolver):
         usermap = config.get('Map', {})
         self.map = yaml.safe_load(usermap)
         self.reverse_map = dict([[v, k] for k, v in self.map.items()])
-        self.where = config.get('Where', "")
         self.encoding = str(config.get('Encoding') or "utf-8")
 
         if ',' in self.server:
@@ -333,29 +330,31 @@ class IdResolver (UserIdResolver):
         else:
             self.contact_points = [self.server]
 
-        auth_provider = PlainTextAuthProvider(
-            username=self.user,
-            password=self.password
-        )
-
-        # create the connectstring like
         params = {
-            'port': self.port,
-            'contact_points': self.contact_points,
-            'auth_provider': auth_provider,
+            'port': "{0!s}".format(self.port),
+            'contact_points': self.contact_points
         }
 
-        log.info("using parameters {0!s}".format(self.params))
+        if self.user and self.password:
+            auth_provider = PlainTextAuthProvider(
+                username=self.user,
+                password=self.password
+            )
+            params['auth_provider'] = auth_provider
+
+        log.info("using parameters {0!s}".format(params))
 
         try:
             self.engine = Cluster(**params)
-        except e:
+        except Exception as e:
             # The DB Engine/Poolclass might not support the pool_size.
-            log.error("Error while connecting to Cassandra %s".format(e))
+            log.error("Error while connecting to Cassandra {0!s}".format(e))
 
         # create a configured "Session" class
         session = self.engine.connect(self.database)
-
+        session.default_consistency_level = ConsistencyLevel.QUORUM
+        session.row_factory = dict_factory
+        
         # create a Session
         self.session = session
 
@@ -372,9 +371,9 @@ class IdResolver (UserIdResolver):
                                 'Password': 'password',
                                 'Password_Hash_Type': 'string',
                                 'Port': 'int',
+                                'Limit': 'int',
                                 'Table': 'string',
                                 'Map': 'string',
-                                'Where': 'string',
                                 'Editable': 'int',
                                 'Encoding': 'string'}
         return {typ: descriptor}
@@ -384,7 +383,7 @@ class IdResolver (UserIdResolver):
         return IdResolver.getResolverClassDescriptor()
 
     @classmethod
-    def testconnection(cls, param):
+    def testconnection(cls, params):
         """
         This function lets you test the to be saved Cassandra connection.
 
@@ -405,25 +404,49 @@ class IdResolver (UserIdResolver):
 
         engine = None
 
+        cluster_params = {}
+        contact_points = []
+        auth_provider = None
+        
+        if 'User' in params and 'Password' in params:
+            user = "{0!s}".format(params['User'])
+            passw = "{0!s}".format(params['Password'])
+            
+            auth_provider = PlainTextAuthProvider(
+                username=user,
+                password=passw
+            )
+            
+            cluster_params['auth_provider'] = auth_provider
+            
+        server_string = "{0!s}".format(params['Server'])
+        
+        if ',' in server_string:
+            contact_points = split(',', server_string)
+        else:
+            contact_points = [server_string]
+
+        cluster_params['contact_points'] = contact_points
+        cluster_params['port'] = "{0!s}".format(params['Port'])
+        
         try:
-            engine = Cluster(**params)
-        except e:
+            engine = Cluster(**cluster_params)
+        except Exception as e:
             # The DB Engine/Poolclass might not support the pool_size.
-            log.error("Error while connecting to Cassandra %s".format(e))
+            log.error("Error while connecting to Cassandra {0!s}".format(e))
 
         # create a configured "Session" class
-        session = engine.connect(self.database)
-
+        session = engine.connect(params['Database'])
+        session.default_consistency_level = ConsistencyLevel.QUORUM
+        
         try:
-            query_string = "SELECT * FROM {}.{} LIMIT 1"
-            query = query_string.format(self.database, self.table)
+            query = "SELECT * FROM {} LIMIT 10".format(params['Table'])
+            result = session.execute(query)
 
-            result = session.exec(query)
-
-            num = len(result)
-            desc = "Found {0:d} users.".format(num)
+            num = len(result.current_rows)
+            desc = "Fetched {0:d} users.".format(num)
         except Exception as exx:
-            desc = "failed to retrieve users: {0!s}".format(exx)
+            desc = "Failed to retrieve users: {0!s}".format(exx)
 
         return num, desc
 
@@ -445,38 +468,83 @@ class IdResolver (UserIdResolver):
                                                    self.password_hash_type)
 
         kwargs = self._attributes_to_db_columns(attributes)
+        
+        userid_field = self.map.get("userid")
+        username_field = self.map.get("username")
+                
+        not_used_id = None
+        retries_count = 0
+        max_retries = 20
+        
+        while not not_used_id:
+            random_id = random.randint(1, 214748363)
+            
+            query_string = "SELECT {},dateOf(timeuid) FROM {} WHERE {}=%s LIMIT 1"
+            query = query_string.format(
+                userid_field,
+                self.table, 
+                userid_field
+            )
+            
+            query_params = [random_id]
 
+            rows = self.session.execute(query, query_params)
+
+            if max_retries == retries_count:
+                msg = "Not able to generate unique {}".format(userid_field)
+                raise Exception(msg)
+                
+            if rows:
+                retries_count += 1
+                continue
+            else:
+                not_used_id = random_id
+                break
+                
+        kwargs[userid_field] = not_used_id
+        import pprint
+        pprint.pprint(kwargs)
         log.debug("Insert new user with attributes {0!s}".format(kwargs))
 
-        query_string = "INSERT INTO {}.{} ({}) VALUES ({})"
+        query_string = "INSERT INTO {} ({}) VALUES ({})"
+        fields = ','.join(kwargs.keys())
+        field_names = "timeuid,{}".format(fields)
+        fields_vals = "%({})s".format(')s, %('.join(kwargs.keys()))
+        field_values = "now(),{}".format(fields_vals)
+        
         query = query_string.format(
-            self.database,
             self.table,
-            kwargs.keys(),
-            kwargs.values()
+            field_names,
+            field_values
         )
 
-        self.session.exec(query)
+        self.session.execute(query, kwargs)
 
-        userid_field = self.map.get("userid")
-
-        query_string = (
-                            "SELECT {},dateOf({}) FROM {}.{} "
-                            "WHERE username='{}' LIMIT 1"
-                        )
+        query_string = "SELECT {},dateOf(timeuid) FROM {} WHERE {} like %s LIMIT 1"
 
         query = query_string.format(
             userid_field,
-            userid_field,
-            self.database,
-            self.table,
-            params['username']
+            self.table, 
+            username_field
         )
+        
+        query_params = [
+            kwargs['username']
+        ]
 
-        rows = self.session.exec(query)
+        rows = self.session.execute(query, query_params)
 
+        new_user_id = None
+        
+        if rows:
+            for row in rows:
+                import pprint
+                pprint.pprint(row)
+                new_user_id = row[self.map.get("userid")]
+                break
+                
         # Return the UID of the new object
-        return getattr(rows[0][userid_field], self.map.get("userid"))
+        return new_user_id
 
     def _attributes_to_db_columns(self, attributes):
         """
@@ -511,21 +579,22 @@ class IdResolver (UserIdResolver):
         :rtype: bool
         """
         res = True
+        
         try:
             userid_field = self.map.get("userid")
 
-            query_string = "DELETE FROM {}.{} WHERE {}={}"
-            query = query_string.format(
-                self.database,
-                self.table,
-                userid_field,
+            query_string = "DELETE FROM {} WHERE {}=%s"
+            query = query_string.format(self.table, userid_field)
+            
+            query_params = [
                 uid
-            )
+            ]
 
-            self.session.exec(query)
+            self.session.execute(query, query_params)
         except Exception as exx:
             log.error("Error deleting user: {0!s}".format(exx))
             res = False
+            
         return res
 
     def update_user(self, uid, attributes=None):
@@ -551,22 +620,19 @@ class IdResolver (UserIdResolver):
 
         pairs = []
         for (key,val) in params.items():
-            pairs.append("{}='{}'".format(key,val))
+            pairs.append("{}=%({})s".format(key, key))
 
         update_string = ','.join(pairs)
 
-        query_string = "UPDATE {}.{} SET {} WHERE {}={}"
-        query = query_string.format(
-            self.database,
-            self.table,
-            update_string,
-            userid_field,
+        query_string = "UPDATE {} SET {} WHERE {}=%s"
+        query = query_string.format(self.table, update_string, userid_field)
+        query_params = [
             uid
-        )
+        ]
 
         try:
-            self.session.exec(query)
-        except exx:
+            self.session.execute(query, query_params)
+        except Exception as exx:
             log.error("Error updating user: {0!s}".format(exx))
             res = False
 

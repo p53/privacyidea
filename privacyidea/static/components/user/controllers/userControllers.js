@@ -321,6 +321,10 @@ angular.module("privacyideaApp")
                         var userinfo = JSON.parse(resolver.data.Map);
                         delete userinfo["userid"];
                         break;
+                    case "cassandraresolver":
+                        var userinfo = JSON.parse(resolver.data.Map);
+                        delete userinfo["userid"];
+                        break;
                 }
                 var fields = [];
                 var r ={};

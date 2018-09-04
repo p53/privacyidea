@@ -498,6 +498,7 @@ def get_resolver_class_dict():
     resolverprefix_dict = {}
 
     modules = get_resolver_module_list()
+    
     base_class_repr = "privacyidea.lib.resolvers.UserIdResolver.UserIdResolver"
     for module in modules:
         log.debug("module: {0!s}".format(module))
@@ -541,7 +542,7 @@ def get_resolver_list():
     module_list.add("privacyidea.lib.resolvers.LDAPIdResolver")
     module_list.add("privacyidea.lib.resolvers.SCIMIdResolver")
     module_list.add("privacyidea.lib.resolvers.SQLIdResolver")
-    module_list.add("privacyidea.lib.resolvers.CassandradResolver")
+    module_list.add("privacyidea.lib.resolvers.CassandraIdResolver")
 
     # Dynamic Resolver modules
     # TODO: Migration
