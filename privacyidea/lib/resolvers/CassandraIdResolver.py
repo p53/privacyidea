@@ -102,6 +102,101 @@ class IdResolver (UserIdResolver):
     def getSearchFields(self):
         return self.searchFields
 
+    def getResolverId(self):
+        """
+        Returns the resolver Id
+        This should be an Identifier of the resolver, preferable the type
+        and the name of the resolver.
+        """
+        return "nosql." + self.resolverId
+
+    @staticmethod
+    def getResolverClassType():
+        return 'cassandraresolver'
+
+    @staticmethod
+    def getResolverType():
+        return IdResolver.getResolverClassType()
+
+    def loadConfig(self, config):
+        """
+        Load the config from conf.
+
+        :param config: The configuration from the Config Table
+        :type config: dict
+        """
+        self.server = config.get('Server', "")
+        self.database = config.get('Database', "")
+        self.resolverId = self.database
+        self.port = config.get('Port', "")
+        self.limit = config.get('Limit', 100)
+        self.user = config.get('User', "")
+        self.password = config.get('Password', "")
+        self.table = config.get('Table', "")
+        self._editable = config.get("Editable", False)
+        self.password_hash_type = config.get("Password_Hash_Type")
+        usermap = config.get('Map', {})
+        self.map = yaml.safe_load(usermap)
+        self.reverse_map = dict([[v, k] for k, v in self.map.items()])
+        self.encoding = str(config.get('Encoding') or "utf-8")
+
+        if ',' in self.server:
+            self.contact_points = split(',', self.server)
+        else:
+            self.contact_points = [self.server]
+
+        params = {
+            'port': "{0!s}".format(self.port),
+            'contact_points': self.contact_points
+        }
+
+        if self.user and self.password:
+            auth_provider = PlainTextAuthProvider(
+                username=self.user,
+                password=self.password
+            )
+            params['auth_provider'] = auth_provider
+
+        log.info("using parameters {0!s}".format(params))
+
+        try:
+            self.engine = Cluster(**params)
+        except Exception as e:
+            # The DB Engine/Poolclass might not support the pool_size.
+            log.error("Error while connecting to Cassandra {0!s}".format(e))
+
+        # create a configured "Session" class
+        session = self.engine.connect(self.database)
+        session.default_consistency_level = ConsistencyLevel.QUORUM
+        session.row_factory = dict_factory
+
+        # create a Session
+        self.session = session
+
+        return self
+
+    @classmethod
+    def getResolverClassDescriptor(cls):
+        descriptor = {}
+        typ = cls.getResolverType()
+        descriptor['clazz'] = "useridresolver.CassandraIdResolver.IdResolver"
+        descriptor['config'] = {'Server': 'string',
+                                'Database': 'string',
+                                'User': 'string',
+                                'Password': 'password',
+                                'Password_Hash_Type': 'string',
+                                'Port': 'int',
+                                'Limit': 'int',
+                                'Table': 'string',
+                                'Map': 'string',
+                                'Editable': 'int',
+                                'Encoding': 'string'}
+        return {typ: descriptor}
+
+    @staticmethod
+    def getResolverDescriptor():
+        return IdResolver.getResolverClassDescriptor()
+
     def checkPass(self, uid, password):
         """
         This function checks the password for a given uid.
@@ -218,38 +313,6 @@ class IdResolver (UserIdResolver):
 
         return userid
 
-    def _get_user_from_record(self, r):
-        """
-        :param r: row
-        :type r: dict
-        :return: User
-        :rtype: dict
-        """
-        user = {}
-        try:
-            if self.map.get("userid") in r:
-                user["id"] = r[self.map.get("userid")]
-        except UnicodeEncodeError:  # pragma: no cover
-            log.error("Failed to convert user: {0!r}".format(r))
-            log.debug("{0!s}".format(traceback.format_exc()))
-
-        for key in self.map.keys():
-            try:
-                raw_value = r.get(self.map.get(key))
-                if raw_value:
-                    if type(raw_value) == str:
-                        val = raw_value.decode(self.encoding)
-                    else:
-                        val = raw_value
-                    user[key] = val
-
-            except UnicodeDecodeError:  # pragma: no cover
-                user[key] = "decoding_error"
-                log.error("Failed to convert user: {0!r}".format(r))
-                log.debug("{0!s}".format(traceback.format_exc()))
-
-        return user
-
     def getUserList(self, searchDict=None):
         """
         :param searchDict: A dictionary with search parameters
@@ -285,170 +348,6 @@ class IdResolver (UserIdResolver):
                 users.append(user)
 
         return users
-
-    def getResolverId(self):
-        """
-        Returns the resolver Id
-        This should be an Identifier of the resolver, preferable the type
-        and the name of the resolver.
-        """
-        return "nosql." + self.resolverId
-
-    @staticmethod
-    def getResolverClassType():
-        return 'cassandraresolver'
-
-    @staticmethod
-    def getResolverType():
-        return IdResolver.getResolverClassType()
-
-    def loadConfig(self, config):
-        """
-        Load the config from conf.
-
-        :param config: The configuration from the Config Table
-        :type config: dict
-        """
-        self.server = config.get('Server', "")
-        self.driver = config.get('Driver', "")
-        self.database = config.get('Database', "")
-        self.resolverId = self.database
-        self.port = config.get('Port', "")
-        self.limit = config.get('Limit', 100)
-        self.user = config.get('User', "")
-        self.password = config.get('Password', "")
-        self.table = config.get('Table', "")
-        self._editable = config.get("Editable", False)
-        self.password_hash_type = config.get("Password_Hash_Type")
-        usermap = config.get('Map', {})
-        self.map = yaml.safe_load(usermap)
-        self.reverse_map = dict([[v, k] for k, v in self.map.items()])
-        self.encoding = str(config.get('Encoding') or "utf-8")
-
-        if ',' in self.server:
-            self.contact_points = split(',', self.server)
-        else:
-            self.contact_points = [self.server]
-
-        params = {
-            'port': "{0!s}".format(self.port),
-            'contact_points': self.contact_points
-        }
-
-        if self.user and self.password:
-            auth_provider = PlainTextAuthProvider(
-                username=self.user,
-                password=self.password
-            )
-            params['auth_provider'] = auth_provider
-
-        log.info("using parameters {0!s}".format(params))
-
-        try:
-            self.engine = Cluster(**params)
-        except Exception as e:
-            # The DB Engine/Poolclass might not support the pool_size.
-            log.error("Error while connecting to Cassandra {0!s}".format(e))
-
-        # create a configured "Session" class
-        session = self.engine.connect(self.database)
-        session.default_consistency_level = ConsistencyLevel.QUORUM
-        session.row_factory = dict_factory
-
-        # create a Session
-        self.session = session
-
-        return self
-
-    @classmethod
-    def getResolverClassDescriptor(cls):
-        descriptor = {}
-        typ = cls.getResolverType()
-        descriptor['clazz'] = "useridresolver.CassandraIdResolver.IdResolver"
-        descriptor['config'] = {'Server': 'string',
-                                'Database': 'string',
-                                'User': 'string',
-                                'Password': 'password',
-                                'Password_Hash_Type': 'string',
-                                'Port': 'int',
-                                'Limit': 'int',
-                                'Table': 'string',
-                                'Map': 'string',
-                                'Editable': 'int',
-                                'Encoding': 'string'}
-        return {typ: descriptor}
-
-    @staticmethod
-    def getResolverDescriptor():
-        return IdResolver.getResolverClassDescriptor()
-
-    @classmethod
-    def testconnection(cls, params):
-        """
-        This function lets you test the to be saved Cassandra connection.
-
-        :param param: A dictionary with all necessary parameter
-                        to test the connection.
-        :type param: dict
-
-        :return: Tuple of success and a description
-        :rtype: (bool, string)
-
-        Parameters are: Server, Driver, Database, User, Password, Port,
-                        Limit, Table, Map
-                        Where, Encoding, conParams
-
-        """
-        num = -1
-        desc = None
-
-        engine = None
-
-        cluster_params = {}
-        contact_points = []
-        auth_provider = None
-
-        if 'User' in params and 'Password' in params:
-            user = "{0!s}".format(params['User'])
-            passw = "{0!s}".format(params['Password'])
-
-            auth_provider = PlainTextAuthProvider(
-                username=user,
-                password=passw
-            )
-
-            cluster_params['auth_provider'] = auth_provider
-
-        server_string = "{0!s}".format(params['Server'])
-
-        if ',' in server_string:
-            contact_points = split(',', server_string)
-        else:
-            contact_points = [server_string]
-
-        cluster_params['contact_points'] = contact_points
-        cluster_params['port'] = "{0!s}".format(params['Port'])
-
-        try:
-            engine = Cluster(**cluster_params)
-        except Exception as e:
-            # The DB Engine/Poolclass might not support the pool_size.
-            log.error("Error while connecting to Cassandra {0!s}".format(e))
-
-        # create a configured "Session" class
-        session = engine.connect(params['Database'])
-        session.default_consistency_level = ConsistencyLevel.QUORUM
-
-        try:
-            query = "SELECT * FROM {} LIMIT 10".format(params['Table'])
-            result = session.execute(query)
-
-            num = len(result.current_rows)
-            desc = "Fetched {0:d} users.".format(num)
-        except Exception as exx:
-            desc = "Failed to retrieve users: {0!s}".format(exx)
-
-        return num, desc
 
     def add_user(self, attributes=None):
         """
@@ -546,28 +445,6 @@ class IdResolver (UserIdResolver):
         # Return the UID of the new object
         return new_user_id
 
-    def _attributes_to_db_columns(self, attributes):
-        """
-        takes the attributes and maps them to the DB columns
-        :param attributes:
-        :return: dict with column name as keys and values
-        """
-        columns = {}
-        for fieldname in attributes.keys():
-            if self.map.get(fieldname):
-                if fieldname == "password":
-                    password = attributes.get(fieldname)
-                    # Create a {SSHA256} password
-                    salt = geturandom(16)
-                    hr = hashlib.sha256(password)
-                    hr.update(salt)
-                    hash_bin = hr.digest()
-                    hash_b64 = b64encode(hash_bin + salt)
-                    columns[self.map.get(fieldname)] = "{SSHA256}" + hash_b64
-                else:
-                    columns[self.map.get(fieldname)] = attributes.get(fieldname)
-        return columns
-
     def delete_user(self, uid):
         """
         Delete a user from the Cassandra database.
@@ -650,3 +527,125 @@ class IdResolver (UserIdResolver):
         # Depending on the database this might look different
         # Usually this is "1"
         return is_true(self._editable)
+
+    @classmethod
+    def testconnection(cls, params):
+        """
+        This function lets you test the to be saved Cassandra connection.
+
+        :param param: A dictionary with all necessary parameter
+                        to test the connection.
+        :type param: dict
+
+        :return: Tuple of success and a description
+        :rtype: (bool, string)
+
+        Parameters are: Server, Driver, Database, User, Password, Port,
+                        Limit, Table, Map
+                        Where, Encoding, conParams
+
+        """
+        num = -1
+        desc = None
+
+        engine = None
+
+        cluster_params = {}
+        contact_points = []
+        auth_provider = None
+
+        if 'User' in params and 'Password' in params:
+            user = "{0!s}".format(params['User'])
+            passw = "{0!s}".format(params['Password'])
+
+            auth_provider = PlainTextAuthProvider(
+                username=user,
+                password=passw
+            )
+
+            cluster_params['auth_provider'] = auth_provider
+
+        server_string = "{0!s}".format(params['Server'])
+
+        if ',' in server_string:
+            contact_points = split(',', server_string)
+        else:
+            contact_points = [server_string]
+
+        cluster_params['contact_points'] = contact_points
+        cluster_params['port'] = "{0!s}".format(params['Port'])
+
+        try:
+            engine = Cluster(**cluster_params)
+        except Exception as e:
+            # The DB Engine/Poolclass might not support the pool_size.
+            log.error("Error while connecting to Cassandra {0!s}".format(e))
+
+        # create a configured "Session" class
+        session = engine.connect(params['Database'])
+        session.default_consistency_level = ConsistencyLevel.QUORUM
+
+        try:
+            query = "SELECT * FROM {} LIMIT 10".format(params['Table'])
+            result = session.execute(query)
+
+            num = len(result.current_rows)
+            desc = "Fetched {0:d} users.".format(num)
+        except Exception as exx:
+            desc = "Failed to retrieve users: {0!s}".format(exx)
+
+        return num, desc
+
+    def _attributes_to_db_columns(self, attributes):
+        """
+        takes the attributes and maps them to the DB columns
+        :param attributes:
+        :return: dict with column name as keys and values
+        """
+        columns = {}
+        for fieldname in attributes.keys():
+            if self.map.get(fieldname):
+                if fieldname == "password":
+                    password = attributes.get(fieldname)
+                    # Create a {SSHA256} password
+                    salt = geturandom(16)
+                    hr = hashlib.sha256(password)
+                    hr.update(salt)
+                    hash_bin = hr.digest()
+                    hash_b64 = b64encode(hash_bin + salt)
+                    columns[self.map.get(fieldname)] = "{SSHA256}" + hash_b64
+                else:
+                    columns[self.map.get(fieldname)] = attributes.get(fieldname)
+        return columns
+
+    def _get_user_from_record(self, r):
+        """
+        :param r: row
+        :type r: dict
+        :return: User
+        :rtype: dict
+        """
+        user = {}
+        try:
+            if self.map.get("userid") in r:
+                user["id"] = r[self.map.get("userid")]
+        except UnicodeEncodeError:  # pragma: no cover
+            log.error("Failed to convert user: {0!r}".format(r))
+            log.debug("{0!s}".format(traceback.format_exc()))
+
+        for key in self.map.keys():
+            try:
+                raw_value = r.get(self.map.get(key))
+                if raw_value:
+                    if type(raw_value) == str:
+                        val = raw_value.decode(self.encoding)
+                    else:
+                        val = raw_value
+                    user[key] = val
+
+            except UnicodeDecodeError:  # pragma: no cover
+                user[key] = "decoding_error"
+                log.error("Failed to convert user: {0!r}".format(r))
+                log.debug("{0!s}".format(traceback.format_exc()))
+
+        return user
