@@ -87,7 +87,7 @@ class IdResolver (UserIdResolver):
         self._editable = False
         self.password_hash_type = None
         return
-        
+
     @staticmethod
     def setup(config=None, cache_dir=None):
         """
@@ -259,14 +259,14 @@ class IdResolver (UserIdResolver):
         users = []
         conditions = []
         filter_condition = ''
-        
+
         if searchDict is None:
             searchDict = {}
         for key in searchDict.keys():
             column = self.map.get(key)
             value = searchDict.get(key)
             value = value.replace("*", "%")
-            
+
             if '%' != value:
                 condition = "{} like %({})s".format(column, column)
                 searchDict[column] = value
@@ -283,7 +283,7 @@ class IdResolver (UserIdResolver):
             user = self._get_user_from_record(r)
             if "id" in user:
                 users.append(user)
-            
+
         return users
 
     def getResolverId(self):
@@ -354,7 +354,7 @@ class IdResolver (UserIdResolver):
         session = self.engine.connect(self.database)
         session.default_consistency_level = ConsistencyLevel.QUORUM
         session.row_factory = dict_factory
-        
+
         # create a Session
         self.session = session
 
@@ -407,20 +407,20 @@ class IdResolver (UserIdResolver):
         cluster_params = {}
         contact_points = []
         auth_provider = None
-        
+
         if 'User' in params and 'Password' in params:
             user = "{0!s}".format(params['User'])
             passw = "{0!s}".format(params['Password'])
-            
+
             auth_provider = PlainTextAuthProvider(
                 username=user,
                 password=passw
             )
-            
+
             cluster_params['auth_provider'] = auth_provider
-            
+
         server_string = "{0!s}".format(params['Server'])
-        
+
         if ',' in server_string:
             contact_points = split(',', server_string)
         else:
@@ -428,7 +428,7 @@ class IdResolver (UserIdResolver):
 
         cluster_params['contact_points'] = contact_points
         cluster_params['port'] = "{0!s}".format(params['Port'])
-        
+
         try:
             engine = Cluster(**cluster_params)
         except Exception as e:
@@ -438,7 +438,7 @@ class IdResolver (UserIdResolver):
         # create a configured "Session" class
         session = engine.connect(params['Database'])
         session.default_consistency_level = ConsistencyLevel.QUORUM
-        
+
         try:
             query = "SELECT * FROM {} LIMIT 10".format(params['Table'])
             result = session.execute(query)
@@ -468,24 +468,24 @@ class IdResolver (UserIdResolver):
                                                    self.password_hash_type)
 
         kwargs = self._attributes_to_db_columns(attributes)
-        
+
         userid_field = self.map.get("userid")
         username_field = self.map.get("username")
-                
+
         not_used_id = None
         retries_count = 0
         max_retries = 20
-        
+
         while not not_used_id:
             random_id = random.randint(1, 214748363)
-            
+
             query_string = "SELECT {},dateOf(timeuid) FROM {} WHERE {}=%s LIMIT 1"
             query = query_string.format(
                 userid_field,
-                self.table, 
+                self.table,
                 userid_field
             )
-            
+
             query_params = [random_id]
 
             rows = self.session.execute(query, query_params)
@@ -493,14 +493,14 @@ class IdResolver (UserIdResolver):
             if max_retries == retries_count:
                 msg = "Not able to generate unique {}".format(userid_field)
                 raise Exception(msg)
-                
+
             if rows:
                 retries_count += 1
                 continue
             else:
                 not_used_id = random_id
                 break
-                
+
         kwargs[userid_field] = not_used_id
         import pprint
         pprint.pprint(kwargs)
@@ -511,7 +511,7 @@ class IdResolver (UserIdResolver):
         field_names = "timeuid,{}".format(fields)
         fields_vals = "%({})s".format(')s, %('.join(kwargs.keys()))
         field_values = "now(),{}".format(fields_vals)
-        
+
         query = query_string.format(
             self.table,
             field_names,
@@ -524,10 +524,10 @@ class IdResolver (UserIdResolver):
 
         query = query_string.format(
             userid_field,
-            self.table, 
+            self.table,
             username_field
         )
-        
+
         query_params = [
             kwargs['username']
         ]
@@ -535,14 +535,14 @@ class IdResolver (UserIdResolver):
         rows = self.session.execute(query, query_params)
 
         new_user_id = None
-        
+
         if rows:
             for row in rows:
                 import pprint
                 pprint.pprint(row)
                 new_user_id = row[self.map.get("userid")]
                 break
-                
+
         # Return the UID of the new object
         return new_user_id
 
@@ -579,13 +579,13 @@ class IdResolver (UserIdResolver):
         :rtype: bool
         """
         res = True
-        
+
         try:
             userid_field = self.map.get("userid")
 
             query_string = "DELETE FROM {} WHERE {}=%s"
             query = query_string.format(self.table, userid_field)
-            
+
             query_params = [
                 uid
             ]
@@ -594,7 +594,7 @@ class IdResolver (UserIdResolver):
         except Exception as exx:
             log.error("Error deleting user: {0!s}".format(exx))
             res = False
-            
+
         return res
 
     def update_user(self, uid, attributes=None):
@@ -619,19 +619,22 @@ class IdResolver (UserIdResolver):
         userid_field = self.map.get("userid")
 
         pairs = []
-        for (key,val) in params.items():
-            pairs.append("{}=%({})s".format(key, key))
+        for (key, val) in params.items():
+            if key != userid_field:
+                pairs.append("{}=%({})s".format(key, key))
 
         update_string = ','.join(pairs)
 
-        query_string = "UPDATE {} SET {} WHERE {}=%s"
-        query = query_string.format(self.table, update_string, userid_field)
-        query_params = [
-            uid
-        ]
+        query_string = "UPDATE {} SET {} WHERE {}=%({})s"
+        query = query_string.format(
+            self.table,
+            update_string,
+            userid_field,
+            userid_field
+        )
 
         try:
-            self.session.execute(query, query_params)
+            self.session.execute(query, params)
         except Exception as exx:
             log.error("Error updating user: {0!s}".format(exx))
             res = False
